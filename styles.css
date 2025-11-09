@@ -406,6 +406,13 @@ body {
         font-size: 38px;
     }
 
+    .square img {
+        height: 100%;
+        width: 100%;
+        object-fit: contain;
+        pointer-events: none;
+    }
+
     .square.valid-move::after {
         width: 18px;
         height: 18px;
