@@ -13,7 +13,7 @@ const PIECES = {
     'bP': './pieces/Chess_pdt45.svg'
 };
 
-var board, currentTurn, selSquare, validMoves, moveHistory, lastMD, gameOvr;
+var board, currentTurn, selSquare, validMoves, moveHistory, lastMD, gameOvr, isAnimating, currentMoveIdx, boardFlipped;
 
 function initBoard() {
     board = [
@@ -32,32 +32,38 @@ function initBoard() {
     moveHistory = [];
     lastMD = null;
     gameOvr = false;
+    isAnimating = false;
+    currentMoveIdx = -1;
+    boardFlipped = false;
 }
 
 function createBoard() {
     const boardEl = document.getElementById('board');
     boardEl.innerHTML = '';
-    for (let row = 0; row < 8; row++) {
+    for (let row =0; row < 8; row++) {
         for (let col = 0; col < 8; col++) {
+            const visualRow = boardFlipped ? 7 - row: row;
+            const visualCol = boardFlipped ? 7 - col : col;
+
             const square = document.createElement('div');
             square.className = 'square';
-            const isLight = (row + col) % 2 === 0;
+            const isLight = (visualRow + visualCol) % 2 === 0;
             square.classList.add(isLight ? 'light' : 'dark');
-            square.dataset.row = row;
-            square.dataset.col = col;
-            square.addEventListener('click', () => handleSC(row,col));
+            square.dataset.row = visualRow;
+            square.dataset.col = visualCol;
+            square.addEventListener('click', () => handleSC(visualRow, visualCol));
 
             if (col === 7) {
                 const rank = document.createElement('div');
                 rank.className = 'coord coord-rank';
-                rank.textContent = 8 - row;
+                rank.textContent = 8 - visualRow;
                 rank.style.color = isLight ? '#b58863' : '#f0d9b5';
                 square.appendChild(rank);
             }
             if (row === 7) {
                 const file = document.createElement('div');
                 file.className = 'coord coord-file';
-                file.textContent = String.fromCharCode(97 + col);
+                file.textContent = String.fromCharCode(97 + visualCol);
                 file.style.color = isLight ? '#b58863' : '#f0d9b5';
                 square.appendChild(file);
             }
@@ -120,23 +126,29 @@ function updTI() {
 
 function handleSC(row, col) {
     if (gameOvr) return;
+    if (currentMoveIdx !== moveHistory.length - 1 && moveHistory.length > 0) {
+        currentMoveIdx = moveHistory.length - 1;
+        reconstruct();
+        return;
+    }
     const piece = board[row][col];
     if (selSquare) {
         const isValidMove = validMoves.some(m => m.row === row && m.col === col);
         if (isValidMove) {
-            makeMove(selSquare.row, selSquare.col, row, col);
+            makeMove(selSquare.row,selSquare.col,row,col);
             selSquare = null;
-            validMoves = [];
+            validMoves= [];
+            return;
         } else if (piece && piece[0] === currentTurn) {
             selSquare = {row,col};
-            validMoves = getVMs(row, col);
+            validMoves = getVMs(row,col);
         } else {
             selSquare = null;
             validMoves = [];
         }
     } else {
         if (piece && piece[0] === currentTurn) {
-            selSquare = {row, col};
+            selSquare = {row,col};
             validMoves = getVMs(row, col);
         }
     }
@@ -146,48 +158,101 @@ function handleSC(row, col) {
 function makeMove(fromRow, fromCol, toRow, toCol) {
     const piece = board[fromRow][fromCol];
     const captured = board[toRow][toCol];
-    board[toRow][toCol] = piece;
-    board[fromRow][fromCol] = null;
-    lastMD = {fromRow, fromCol, toRow, toCol};
-    const from = `${String.fromCharCode(97 + fromCol)}${8 - fromRow}`;
-    const to = `${String.fromCharCode(97 + toCol)}${8 - toRow}`;
-    moveHistory.push({
-        piece,
-        from,
-        to,
-        captured,
-        notation: `${from}${to}`
-    });
-    updMovesLs();
-    currentTurn = currentTurn === 'w' ? 'b' : 'w';
-    if (isCheckmate()) {
-        endGame(`${currentTurn === 'w' ? 'Black' : 'White'} wins by a checkmate!`);
+    const fromSquare = document.querySelector(`[data-row="${fromRow}"][data-col="${fromCol}"]`);
+    const toSquare = document.querySelector(`[data-row="${toRow}"][data-col="${toCol}"]`);
+    const pieceImg = fromSquare.querySelector('img');
+    if (pieceImg) {
+        isAnimating = true;
+        const fromRect = fromSquare.getBoundingClientRect();
+        const toRect = toSquare.getBoundingClientRect();
+        const deltaX = toRect.left - fromRect.left;
+        const deltaY = toRect.top - fromRect.top;
+
+        const movingPc = pieceImg.cloneNode(true);
+        movingPc.style.cssText = `
+        position: fixed;
+        left: ${fromRect.left}px;
+        top: ${fromRect.top}px;
+        width: ${fromRect.width}px;
+        height: ${fromRect.height}px;
+        z-index: 1000;
+        pointer-events: none;
+        transition: none`;
+        document.body.appendChild(movingPc);
+
+        pieceImg.style.opacity = '0';
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                movingPc.style.transition = 'transform 0.25s ease-out';
+                movingPc.style.transform = `translate(${deltaX}px,${deltaY}px)`;
+            });
+        });
+
+        setTimeout(() => {
+            board[toRow][toCol] = piece;
+            board[fromRow][fromCol] = null;
+            lastMD = {fromRow,fromCol, toRow, toCol};
+            const from = `${String.fromCharCode(97 + fromCol)}${8 - fromRow}`;
+            const to = `${String.fromCharCode(97 + toCol)}${8 - toRow}`;
+            moveHistory.push({
+                piece,
+                from,
+                to,
+                captured,
+                notation: `${from}${to}`
+            });
+            currentMoveIdx = moveHistory.length -1;
+            updMovesLs();
+            currentTurn = currentTurn === 'w' ? 'b' : 'w';
+            movingPc.remove();
+            isAnimating = false;
+            if (isCheckmate()) {
+                endGame(`${currentTurn === 'w' ? 'Black' : 'White'} wins by a checkmate!`);
+            }
+            renderBoard();
+        },250);
+    } else {
+        board[toRow][toCol] = piece;
+        board[fromRow][fromCol] = null;
+        lastMD = {fromRow, fromCol, toRow, toCol};
+        const from = `${String.fromCharCode(97 + fromCol)}${8 - fromRow}`;
+        const to = `${String.fromCharCode(97 + toCol)}${8 - toRow}`;
+        moveHistory.push({
+            piece,
+            from,
+            to,
+            captured,
+            notation: `${from}${to}`
+        });
+        updMovesLs();
+        renderBoard();
+        currentTurn = currentTurn === 'w' ? 'b' : 'w';
+        if (isCheckmate()) {
+            endGame(`${currentTurn === 'w' ? 'Black' : 'White'} wins by a checkmate!`);
+        }
     }
 }
 
 function updMovesLs() {
-    const movesList = document.getElementById('movesLs');
+    const movesList= document.getElementById('movesLs');
     movesList.innerHTML = '';
-    for (let i = 0; i < moveHistory.length; i+= 2) {
+    for (let i = 0; i < moveHistory.length; i +=2) {
         const rowDiv = document.createElement('div');
         rowDiv.className = 'move-row';
-
         const numberDiv = document.createElement('div');
         numberDiv.className = 'move-number';
-        numberDiv.textContent = `${Math.floor(i / 2) + 1}`;
-
+        numberDiv.textContent = `${Math.floor(i /2) + 1}`;
         const whiteMove = document.createElement('div');
         whiteMove.className = 'move';
-        if (i === moveHistory.length - 1) whiteMove.classList.add('active');
+        if (i === currentMoveIdx) whiteMove.classList.add('active');
         whiteMove.textContent = moveHistory[i].notation;
-
         rowDiv.appendChild(numberDiv);
         rowDiv.appendChild(whiteMove);
-
         if (i + 1 < moveHistory.length) {
             const blackMove = document.createElement('div');
             blackMove.className = 'move';
-            if (i + 1 === moveHistory.length - 1) blackMove.classList.add('active');
+            if (i + 1 === currentMoveIdx) blackMove.classList.add('active');
             blackMove.textContent = moveHistory[i + 1].notation;
             rowDiv.appendChild(blackMove);
         }
@@ -320,13 +385,87 @@ function offerDraw() {
 }
 
 function flipBoard() {
-    alert('not implemented yet');
+    boardFlipped = !boardFlipped;
+    createBoard();
+    renderBoard();
 }
 
-function firstMove() {}
-function prevMove() {}
-function nextMove() {}
-function lastMove() {}
+function firstMove() {
+    if (moveHistory.length === 0) return;
+    currentMoveIdx = -1;
+    reconstruct();
+}
+
+function prevMove() {
+    if (currentMoveIdx > -1) {
+        currentMoveIdx--;
+        reconstruct();
+    }
+}
+
+function nextMove() {
+    if (currentMoveIdx < moveHistory.length - 1) {
+        currentMoveIdx++;
+        reconstruct();
+    }
+}
+
+function lastMove() {
+    if (moveHistory.length === 0) return;
+    currentMoveIdx = moveHistory.length - 1;
+    reconstruct();
+}
+
+function reconstruct() {
+    board = [
+        ['bR', 'bN', 'bB', 'bQ', 'bK', 'bB', 'bN', 'bR'],
+        ['bP', 'bP', 'bP', 'bP', 'bP', 'bP', 'bP', 'bP'],
+        [null, null, null, null, null, null, null, null],
+        [null, null, null, null, null, null, null, null],
+        [null, null, null, null, null, null, null, null],
+        [null, null, null, null, null, null, null, null],
+        ['wP', 'wP', 'wP', 'wP', 'wP', 'wP', 'wP', 'wP'],
+        ['wR', 'wN', 'wB', 'wQ', 'wK', 'wB', 'wN', 'wR']
+    ]; // i used AI for this array, sorry
+
+    for (let i = 0; i <= currentMoveIdx; i++) {
+        const move = moveHistory[i];
+        const fromCol = move.from.charCodeAt(0) - 97;
+        const fromRow = 8 - parseInt(move.from[1]);
+        const toCol = move.to.charCodeAt(0) - 97;
+        const toRow = 8 - parseInt(move.to[1]);
+        board[toRow][toCol] = board[fromRow][fromCol];
+        board[fromRow][fromCol] = null;
+    }
+
+    if (currentMoveIdx >= 0) {
+        const move = moveHistory[currentMoveIdx];
+        const fromCol = move.from.charCodeAt(0) -97;
+        const fromRow = 8 - parseInt(move.from[1]);
+        const toCol = move.to.charCodeAt(0) - 97;
+        const toRow = 8 - parseInt(move.to[1]);
+        lastMD = {fromRow,fromCol,toRow,toCol};
+    } else {
+        lastMD = null;
+    }
+
+    currentTurn = (currentMoveIdx + 1) % 2 === 0 ? 'w' : 'b';
+    selSquare = null;
+    validMoves = [];
+    renderBoard();
+    updMLH();
+}
+
+function updMLH() {
+    const allMoves = document.querySelectorAll('.move');
+    allMoves.forEach((move, index) => {
+        if (index === currentMoveIdx) {
+            move.classList.add('active');
+        } else {
+            move.classList.remove('active');
+        }
+    });
+}
 
 initBoard();
 createBoard();

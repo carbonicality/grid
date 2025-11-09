@@ -119,6 +119,27 @@ body {
     transition: background-color 0.15s ease;
 }
 
+.square img {
+    height: 100%;
+    width: 100%;
+    object-fit: contain;
+    pointer-events: none;
+    transition: none;
+}
+
+.square img.moving {
+    transition: transform 0.25s ease-out;
+}
+
+@keyframes pieceMove {
+    from {
+        transform: scale(1);
+    }
+    to {
+        transform: scale(1);
+    }
+}
+
 .square.light {
     background: #f0d9b5;
 }
@@ -404,13 +425,6 @@ body {
         width: 50px;
         height: 50px;
         font-size: 38px;
-    }
-
-    .square img {
-        height: 100%;
-        width: 100%;
-        object-fit: contain;
-        pointer-events: none;
     }
 
     .square.valid-move::after {
