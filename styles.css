@@ -442,3 +442,51 @@ body {
         font-size: 10px;
     }
 }
+
+.promo-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #2b2926;
+    padding: 32px;
+    border-radius: 6px;
+    box-shadow: 0 16px 64px rgba(0,0,0,0.9);
+    text-align: center;
+    display: none;
+    z-index: 1000;
+}
+
+.promo-dialog.show {
+    display: block;
+}
+
+.promo-dialog h3{
+    color: #f0d9b5;
+    margin-bottom: 20px;
+    font-size: 18px;
+}
+
+.promo-options {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.promo-piece {
+    background: #3e3b37;
+    border: 2px solid #555;
+    border-radius: 4px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.promo-piece:hover {
+    background: #4a4744;
+    border-color: #759952;
+    transform: scale(1.05);
+}

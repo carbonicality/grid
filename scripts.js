@@ -13,7 +13,7 @@ const PIECES = {
     'bP': './pieces/Chess_pdt45.svg'
 };
 
-var board, currentTurn, selSquare, validMoves, moveHistory, lastMD, gameOvr, isAnimating, currentMoveIdx, boardFlipped;
+var board, currentTurn, selSquare, validMoves, moveHistory, lastMD, gameOvr, isAnimating, currentMoveIdx, boardFlipped, promoPending, lastPawnDM;
 
 function initBoard() {
     board = [
@@ -35,6 +35,8 @@ function initBoard() {
     isAnimating = false;
     currentMoveIdx = -1;
     boardFlipped = false;
+    promoPending = null;
+    lastPawnDM = null;
 }
 
 function createBoard() {
@@ -125,7 +127,7 @@ function updTI() {
 }
 
 function handleSC(row, col) {
-    if (gameOvr) return;
+    if (gameOvr || promoPending) return;
     if (currentMoveIdx !== moveHistory.length - 1 && moveHistory.length > 0) {
         currentMoveIdx = moveHistory.length - 1;
         reconstruct();
@@ -158,9 +160,15 @@ function handleSC(row, col) {
 function makeMove(fromRow, fromCol, toRow, toCol) {
     const piece = board[fromRow][fromCol];
     const captured = board[toRow][toCol];
+    const isPwnPromo = piece[1] === 'P' && (toRow === 0 || toRow === 7);
     const fromSquare = document.querySelector(`[data-row="${fromRow}"][data-col="${fromCol}"]`);
     const toSquare = document.querySelector(`[data-row="${toRow}"][data-col="${toCol}"]`);
     const pieceImg = fromSquare.querySelector('img');
+    const moveData = validMoves.find(m => m.row === toRow && m.col === toCol);
+    const isEnPassant = moveData?.isEnPassant;
+    if (isEnPassant) {
+        board[fromRow][toCol] = null;
+    }
     if (pieceImg) {
         isAnimating = true;
         const fromRect = fromSquare.getBoundingClientRect();
@@ -171,67 +179,90 @@ function makeMove(fromRow, fromCol, toRow, toCol) {
         const movingPc = pieceImg.cloneNode(true);
         movingPc.style.cssText = `
         position: fixed;
-        left: ${fromRect.left}px;
         top: ${fromRect.top}px;
+        left: ${fromRect.left}px;
         width: ${fromRect.width}px;
         height: ${fromRect.height}px;
         z-index: 1000;
         pointer-events: none;
-        transition: none`;
+        transition: none;`;
         document.body.appendChild(movingPc);
-
         pieceImg.style.opacity = '0';
-
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 movingPc.style.transition = 'transform 0.25s ease-out';
                 movingPc.style.transform = `translate(${deltaX}px,${deltaY}px)`;
             });
         });
-
         setTimeout(() => {
             board[toRow][toCol] = piece;
             board[fromRow][fromCol] = null;
-            lastMD = {fromRow,fromCol, toRow, toCol};
-            const from = `${String.fromCharCode(97 + fromCol)}${8 - fromRow}`;
-            const to = `${String.fromCharCode(97 + toCol)}${8 - toRow}`;
-            moveHistory.push({
-                piece,
-                from,
-                to,
-                captured,
-                notation: `${from}${to}`
-            });
-            currentMoveIdx = moveHistory.length -1;
-            updMovesLs();
-            currentTurn = currentTurn === 'w' ? 'b' : 'w';
+            if (isPwnPromo) {
+                promoPending = {toRow,toCol,piece,captured,fromRow,fromCol};
+                showPromo(toRow, toCol);
+            } else {
+                completeMv(fromRow, fromCol, toRow, toCol, piece,captured);
+            }
             movingPc.remove();
             isAnimating = false;
-            if (isCheckmate()) {
-                endGame(`${currentTurn === 'w' ? 'Black' : 'White'} wins by a checkmate!`);
-            }
-            renderBoard();
-        },250);
+        }, 250);
     } else {
         board[toRow][toCol] = piece;
         board[fromRow][fromCol] = null;
-        lastMD = {fromRow, fromCol, toRow, toCol};
-        const from = `${String.fromCharCode(97 + fromCol)}${8 - fromRow}`;
-        const to = `${String.fromCharCode(97 + toCol)}${8 - toRow}`;
-        moveHistory.push({
-            piece,
-            from,
-            to,
-            captured,
-            notation: `${from}${to}`
-        });
-        updMovesLs();
-        renderBoard();
-        currentTurn = currentTurn === 'w' ? 'b' : 'w';
-        if (isCheckmate()) {
-            endGame(`${currentTurn === 'w' ? 'Black' : 'White'} wins by a checkmate!`);
+        if (isPwnPromo) {
+            promoPending = {toRow, toCol, piece, captured, fromRow, fromCol};
+            showPromo(toRow, toCol);
+        } else {
+            completeMv(fromRow, fromCol, toRow, toCol, piece, captured);
         }
     }
+}
+
+function completeMv(fromRow, fromCol, toRow, toCol, piece, captured) { // ya get it? cuz mv is move in linux HAHAHA (your sign to laugh to the funny of the day)
+    lastMD = {fromRow, fromCol, toRow, toCol};
+    const from = `${String.fromCharCode(97 + fromCol)}${8- fromRow}`;
+    const to = `${String.fromCharCode(97 + toCol)}${8 - toRow}`;
+    moveHistory.push({
+        piece,
+        from,
+        to,
+        captured,
+        notation: `${from}${to}`
+    });
+    currentMoveIdx = moveHistory.length - 1;
+    updMovesLs();
+    if (piece[1] === 'P' && Math.abs(toRow - fromRow) === 2) {
+        lastPawnDM = {row: toRow, col: toCol};
+    } else {
+        lastPawnDM = null;
+    }
+    currentTurn = currentTurn === 'w' ? 'b' : 'w';
+    renderBoard();
+    if (isCheckmate()) {
+        endGame(`${currentTurn === 'w' ? 'Black' : 'White'} wins by a checkmate!`);
+    }
+}   
+
+function showPromo(row,col) {
+    const dialog = document.getElementById('promoDialog');
+    const colour = board[row][col][0];
+    document.getElementById('promoteQ').innerHTML = `<img src="${PIECES[colour + 'Q']}" style="width:60px;height:60px">`;
+    document.getElementById('promoteR').innerHTML = `<img src="${PIECES[colour + 'R']}" style="width:60px;height:60px">`;
+    document.getElementById('promoteB').innerHTML = `<img src="${PIECES[colour + 'B']}" style="width:60px;height:60px">`;
+    document.getElementById('promoteN').innerHTML = `<img src="${PIECES[colour + 'N']}" style="width:60px;height:60px">`;
+    dialog.classList.add('show');
+    document.getElementById('overlay').classList.add('show');
+}
+
+function promotePawn(pieceType) { //lil lv1 pawn noob is turning into a lv10000 mafia boss pro
+    if (!promoPending) return;
+    const {toRow, toCol, piece, captured, fromRow, fromCol} = promoPending;
+    const colour = piece[0];
+    board[toRow][toCol] = colour + pieceType;
+    document.getElementById('promoDialog').classList.remove('show');
+    document.getElementById('overlay').classList.remove('show');
+    completeMv(fromRow, fromCol, toRow, toCol, board[toRow][toCol], captured);
+    promoPending = null;
 }
 
 function updMovesLs() {
@@ -284,6 +315,18 @@ function getVMs(row, col) { //vmware ahh
                 moves.push({row: row+direction, col:col+dc});
             }
         });
+
+        if (lastPawnDM) {
+            if (row === (colour === 'w' ? 3 : 4)) {
+                [-1,1].forEach(dc => {
+                    const targetCol = col + dc;
+                    if (lastPawnDM.row === row && lastPawnDM.col === targetCol) {
+                        const captureRow = row + direction;
+                        moves.push({row:captureRow,col:targetCol,isEnPassant:true});
+                    }
+                });
+            }
+        }
     }
 
     if (type === 'R') {
@@ -336,6 +379,18 @@ function getVMs(row, col) { //vmware ahh
             const r = row + dr;
             const c = col + dc;
             if (r >= 0 && r <= 7 && c >= 0 && c <=7) {
+                if (!board[r][c] || board[r][c][0] !== colour) {
+                    moves.push({row: r, col: c});
+                }
+            }
+        });
+    }
+
+    if (type === 'N') {
+        [[2,1], [2,-1], [-2,1], [-2,-1], [1,2], [1,-2], [-1,2], [-1,-2]].forEach(([dr, dc]) => {
+            const r = row + dr;
+            const c = col + dc;
+            if (r >= 0 && r <= 7 && c >= 0 && c <= 7) {
                 if (!board[r][c] || board[r][c][0] !== colour) {
                     moves.push({row: r, col: c});
                 }
@@ -465,6 +520,12 @@ function updMLH() {
             move.classList.remove('active');
         }
     });
+}
+
+function claimTimeout() {
+    if (confirm('Claim win on time? (lmao theres no timer but still)')) { // ts is kinda redundant cuz there isnt even a timer :sob:
+        endGame(`${currentTurn === 'w' ? 'White' : 'Black'} wins on time!`);
+    }
 }
 
 initBoard();
