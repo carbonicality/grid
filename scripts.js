@@ -67,13 +67,15 @@ function createBoard() {
 }
 
 function renderBoard() {
-    for (let row = 0; row < 8; row++) {
-        for (let col = 0; col < 8; col++) {
+    for (let row = 0; row <8; row++) {
+        for (let col=0; col < 8; col++) {
             const square = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
             const piece = board[row][col];
-            const coords = square.querySelectorAll('.coord');
+            square.classList.remove('selected', 'valid-move', 'has-piece', 'last-move');
+            const coords = Array.from(square.querySelectorAll('.coord'));
             square.innerHTML = '';
             coords.forEach(coord => square.appendChild(coord));
+
             if (piece) {
                 const pieceImg = document.createElement('img');
                 pieceImg.src = PIECES[piece];
@@ -84,7 +86,6 @@ function renderBoard() {
                 pieceImg.style.pointerEvents = 'none';
                 square.appendChild(pieceImg);
             }
-            square.classList.remove('selected', 'valid-move', 'has-piece', 'last-move');
         }
     }
 
@@ -97,16 +98,19 @@ function renderBoard() {
 
     if (selSquare) {
         const square = document.querySelector(`[data-row="${selSquare.row}"][data-col="${selSquare.col}"]`);
-        square.classList.add('selected');
+        if (square) square.classList.add('selected');
     }
 
     validMoves.forEach(move => {
-        const square=document.querySelector(`[data-row="${move.row}"][data-col="${move.col}"]`);
-        square.classList.add('valid-move');
-        if (board[move.row][move.col]) {
-            square.classList.add('has-piece');
+        const square = document.querySelector(`[data-row="${move.row}"][data-col="${move.col}"]`);
+        if (square) {
+            square.classList.add('valid-move');
+            if (board[move.row][move.col]) {
+                square.classList.add('has-piece');
+            }
         }
     });
+    
     updTI();
 }
 
@@ -143,7 +147,7 @@ function makeMove(fromRow, fromCol, toRow, toCol) {
     const piece = board[fromRow][fromCol];
     const captured = board[toRow][toCol];
     board[toRow][toCol] = piece;
-    board[fromRow][fromRow] = null;
+    board[fromRow][fromCol] = null;
     lastMD = {fromRow, fromCol, toRow, toCol};
     const from = `${String.fromCharCode(97 + fromCol)}${8 - fromRow}`;
     const to = `${String.fromCharCode(97 + toCol)}${8 - toRow}`;
